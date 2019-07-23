@@ -92,7 +92,7 @@ struct Number
         node.idx1 = lhs.idx;
         node.idx2 = rhs.idx;
 
-        //  compute derivatives, both derivatives of addition are 1
+        //  compute derivatives
         node.der1 = 1;
         node.der2 = -1;
 
@@ -117,7 +117,7 @@ struct Number
         node.idx1 = lhs.idx;
         node.idx2 = rhs.idx;
 
-        //  compute derivatives, both derivatives of addition are 1
+        //  compute derivatives
         node.der1 = rhs.value;                  //  Different derivative here
         node.der2 = lhs.value;                  //  Different derivative here
 
@@ -142,7 +142,7 @@ struct Number
         node.idx1 = lhs.idx;
         node.idx2 = rhs.idx;
 
-        //  compute derivatives, both derivatives of addition are 1
+        //  compute derivatives
         node.der1 = 1.0 / rhs.value;;
         node.der2 = -lhs.value / (rhs.value * rhs.value);
 
