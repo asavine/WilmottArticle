@@ -265,7 +265,7 @@ struct Number
     }
 };
 
-vector<double> calculateAdjoints(Number& result)
+inline vector<double> calculateAdjoints(Number& result)
 {
     //  initialization
     vector<double> adjoints(tape.size(), 0.0);  //  initialize all to 0
@@ -290,7 +290,7 @@ vector<double> calculateAdjoints(Number& result)
     return adjoints;
 }
 
-void differentiateBlackScholes()
+inline void differentiateBlackScholes()
 {
     // initializes and records inputs
     Number spot = 100, 
