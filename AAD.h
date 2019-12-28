@@ -17,7 +17,7 @@ struct Node
 };
 
 //  The tape, declared as a global variable
-vector<Node> tape;
+thread_local vector<Node> tape;
 
 struct Number
 {
@@ -263,6 +263,13 @@ struct Number
 
         return result;
     }
+
+    friend bool operator==(const Number& lhs, const Number& rhs){ return lhs.value == rhs.value; }
+    friend bool operator!=(const Number& lhs, const Number& rhs){ return lhs.value != rhs.value; }
+    friend bool operator>(const Number& lhs, const Number& rhs){ return lhs.value > rhs.value; }
+    friend bool operator>=(const Number& lhs, const Number& rhs){ return lhs.value >= rhs.value; }
+    friend bool operator<(const Number& lhs, const Number& rhs){ return lhs.value < rhs.value; }
+    friend bool operator<=(const Number& lhs, const Number& rhs){ return lhs.value <= rhs.value; }
 };
 
 inline vector<double> calculateAdjoints(Number& result)

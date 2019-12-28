@@ -88,7 +88,8 @@ double xDupireBarrierPricer(
     double              epsilon,
     double              useSobol,
     double              seed1,
-    double              seed2)
+    double              seed2,
+    double              parallel)
 {
     FreeAllTempMemory();
 
@@ -113,13 +114,13 @@ double xDupireBarrierPricer(
 	rng->init(int(steps));
 
     //  Call and return
-    return dupireBarrierPricer(spot, vspots, vtimes, vvols, mat, strike, barrier, int(paths), int(batchSize), int(steps), spot*epsilon, *rng);
+    return parallel > 0.5 
+        ? dupireBarrierPricerMT(spot, vspots, vtimes, vvols, mat, strike, barrier, int(paths), int(batchSize), int(steps), spot*epsilon, *rng)
+        : dupireBarrierPricer(spot, vspots, vtimes, vvols, mat, strike, barrier, int(paths), int(batchSize), int(steps), spot*epsilon, *rng);
 }
 
-/*
-
 extern "C" __declspec(dllexport)
-LPXLOPER12 xToyDupireBarrierMcRisks(
+LPXLOPER12 xDupireBarrierRisks(
     //  model parameters
     double              spot,
     FP12*               spots,
@@ -129,11 +130,13 @@ LPXLOPER12 xToyDupireBarrierMcRisks(
     double              strike,
     double              barrier,
     double              paths,
+    double              batchSize,
     double              steps,
     double              epsilon,
     double              useSobol,
     double              seed1,
-    double              seed2)
+    double              seed2,
+    double              parallel)
 {
     FreeAllTempMemory();
 
@@ -160,8 +163,17 @@ LPXLOPER12 xToyDupireBarrierMcRisks(
     //  Call 
 	double price, delta;
 	matrix<double> vegas(vvols.rows(), vvols.cols());
-    toyDupireBarrierMcRisks(spot, vspots, vtimes, vvols, mat, strike, barrier, int(paths), int(steps), 100*epsilon, *rng,
-		price, delta, vegas);
+    
+    if (parallel > 0.5)
+    {
+        dupireBarrierRisksMT(spot, vspots, vtimes, vvols, mat, strike, barrier, int(paths), int(batchSize), int(steps), spot*epsilon, *rng,
+		    price, delta, vegas);        
+    }
+    else
+    {
+        dupireBarrierRisks(spot, vspots, vtimes, vvols, mat, strike, barrier, int(paths), int(batchSize), int(steps), spot*epsilon, *rng,
+		    price, delta, vegas);    
+    }
 
 	//	Pack and return
 	LPXLOPER12 results = TempXLOPER12();
@@ -178,8 +190,6 @@ LPXLOPER12 xToyDupireBarrierMcRisks(
 	return results;
 }
 
-*/
-
 //	Registers
 
 extern "C" __declspec(dllexport) int xlAutoOpen(void)
@@ -190,9 +200,9 @@ extern "C" __declspec(dllexport) int xlAutoOpen(void)
 
     Excel12f(xlfRegister, 0, 11, (LPXLOPER12)&xDLL,
         (LPXLOPER12)TempStr12(L"xDupireBarrierPricer"),
-        (LPXLOPER12)TempStr12(L"BBK%K%K%BBBBBBBBBB"),
+        (LPXLOPER12)TempStr12(L"BBK%K%K%BBBBBBBBBBB"),
         (LPXLOPER12)TempStr12(L"xDupireBarrierPricer"),
-        (LPXLOPER12)TempStr12(L"spot, spots, times, vols, mat, strike, barrier, paths, batchSize, steps, epsilon, useSobol, [seed1], [seed2]"),
+        (LPXLOPER12)TempStr12(L"spot, spots, times, vols, mat, strike, barrier, paths, batchSize, steps, epsilon, useSobol, [seed1], [seed2], [parallel]"),
         (LPXLOPER12)TempStr12(L"1"),
         (LPXLOPER12)TempStr12(L"myOwnCppFunctions"),
         (LPXLOPER12)TempStr12(L""),
@@ -200,19 +210,17 @@ extern "C" __declspec(dllexport) int xlAutoOpen(void)
         (LPXLOPER12)TempStr12(L"Toy Dupire Barrier MC"),
         (LPXLOPER12)TempStr12(L""));
 
-	/*
     Excel12f(xlfRegister, 0, 11, (LPXLOPER12)&xDLL,
-        (LPXLOPER12)TempStr12(L"xToyDupireBarrierMcRisks"),
-        (LPXLOPER12)TempStr12(L"QBK%K%K%BBBBBBBBB"),
-        (LPXLOPER12)TempStr12(L"xToyDupireBarrierMcRisks"),
-        (LPXLOPER12)TempStr12(L"spot, spots, times, vols, mat, strike, barrier, paths, steps, epsilon, useSobol, [seed1], [seed2]"),
+        (LPXLOPER12)TempStr12(L"xDupireBarrierRisks"),
+        (LPXLOPER12)TempStr12(L"QBK%K%K%BBBBBBBBBBB"),
+        (LPXLOPER12)TempStr12(L"xDupireBarrierRisks"),
+        (LPXLOPER12)TempStr12(L"spot, spots, times, vols, mat, strike, barrier, paths, batchSize, steps, epsilon, useSobol, [seed1], [seed2], [parallel]"),
         (LPXLOPER12)TempStr12(L"1"),
         (LPXLOPER12)TempStr12(L"myOwnCppFunctions"),
         (LPXLOPER12)TempStr12(L""),
         (LPXLOPER12)TempStr12(L""),
         (LPXLOPER12)TempStr12(L"Toy Dupire Barrier MC AAD risks"),
         (LPXLOPER12)TempStr12(L""));
-	*/
 
 	/* Free the XLL filename */
 	Excel12f(xlFree, 0, 1, (LPXLOPER12)&xDLL);

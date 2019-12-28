@@ -5,6 +5,8 @@
 #include "interp.h"
 #include "AAD.h"
 
+#include <numeric>
+
 template <class T>
 inline T dupireBarrierMCBatch(
     //  Spot
@@ -188,17 +190,17 @@ inline void dupireBarrierRisks(
 	
 		//	Compute the batch
 		Number nBatchPrice = dupireBarrierMCBatch(
-			S0, 
-			spots, 
-			times, 
-			vols, 
-			maturity, 
-			strike, 
-			barrier, 
+			nS0, 
+			nSpots, 
+			nTimes, 
+			nVols, 
+			nMaturity, 
+			nStrike, 
+			nBarrier, 
 			firstPath, 
 			lastPath, 
 			Nt, 
-			epsilon, 
+			nEpsilon, 
 			random);
 
 		//	Back-propagate derivatives
@@ -207,7 +209,7 @@ inline void dupireBarrierRisks(
 		//	Pick results
 		batchPrice = nBatchPrice.value;
 		batchDelta = adjoints[nS0.idx];
-		transform(nVols.begin(), nVols.end(), batchVegas.begin,
+		transform(nVols.begin(), nVols.end(), batchVegas.begin(),
 			[&](const Number& vol) { return adjoints[vol.idx]; });
 
 		//	Accumulate
@@ -216,9 +218,190 @@ inline void dupireBarrierRisks(
 		price += batchPrice * w;
 		delta += batchDelta * w;
 		transform(vegas.begin(), vegas.end(), batchVegas.begin(), vegas.begin(),
-			[&](const double& vega, const Number& batchVega) { return vega + batchVega * w; });
+			[&](const double& vega, const double& batchVega) { return vega + batchVega * w; });
 
 		//	Next batch
 		firstPath = lastPath;
+	}
+}
+
+inline double dupireBarrierPricerMT(
+    //  Spot
+    const double			S0,
+    //  Local volatility
+    const vector<double>&   spots,
+    const vector<double>&   times,
+    const matrix<double>&   vols,
+    //  Product parameters
+    const double            maturity,
+    const double            strike,
+    const double            barrier,
+    //  Number of paths
+    const int				Np,
+	//	Number of simulations in every batch
+	const int				Nb,
+	//	Time steps
+    const int				Nt,
+    //  Smoothing
+    const double            epsilon,
+    //  Random number generator
+    RNG&					random)
+{	
+	//  Memory for the storage of batch-wise results
+    const int numBatches = int((Np - 1) / Nb) + 1;
+    vector<double> batchResults(numBatches);
+
+	//	Initialize the RNG
+	random.init(Nt);
+
+	//	Iterate over batches, in parallel
+	#pragma omp parallel for
+	for(int batch=0; batch<numBatches; ++batch)
+	{
+		const int firstPath = batch * Nb;
+		const int lastPath = min(firstPath + Nb, Np);
+
+        //  Make a copy of the (mutable) RNG
+        auto cRandom = random.clone();
+
+        //  Process the batch
+        batchResults[batch] = (lastPath - firstPath) 
+            * dupireBarrierMCBatch(
+                S0,
+                spots,
+                times,
+                vols,
+                maturity,
+                strike,
+                barrier,
+                firstPath,
+                lastPath,
+                Nt,
+                epsilon,
+                *cRandom);   //  call with own copy of RNG
+	}
+    
+    //  Average results over batches
+    return accumulate(batchResults.begin(), batchResults.end(), 0.0) / Np;
+}
+
+inline void dupireBarrierRisksMT(
+    //  Spot
+    const double			S0,
+    //  Local volatility
+    const vector<double>&   spots,
+    const vector<double>&   times,
+    const matrix<double>&   vols,
+    //  Product parameters
+    const double            maturity,
+    const double            strike,
+    const double            barrier,
+    //  Number of paths
+    const int				Np,
+	//	Number of simulations in every batch
+	const int				Nb,
+	//	Time steps
+    const int				Nt,
+    //  Smoothing
+    const double            epsilon,
+    //  Random number generator
+    RNG&					random,
+	//	Results
+	double&					price,
+	double&					delta,
+	matrix<double>&			vegas)
+{	
+	//  Memory for the storage of batch-wise results
+    int numBatches = int((Np - 1) / Nb) + 1;
+    vector<double> batchPrices(numBatches);
+    vector<double> batchDeltas(numBatches);
+    vector<matrix<double>> batchVegas(numBatches);
+    for (auto& batchVega : batchVegas)
+    {
+	    batchVega.resize(spots.size(), times.size());
+    }
+
+	//	Initialize the RNG
+	random.init(Nt);
+
+	//	Iterate over batches, in parallel
+	#pragma omp parallel for
+	for(int batch=0; batch<numBatches; ++batch)
+	{
+		const int firstPath = batch * Nb;
+		const int lastPath = min(firstPath + Nb, Np);
+
+        //  Make a copy of the (mutable) RNG
+        auto cRandom = random.clone();
+
+        //	Wipe the tape
+        tape.clear();
+
+        //	Put parameters on tape by initialization of Number types
+        
+		//	Working memory
+		static thread_local Number nS0, nMaturity, nStrike, nBarrier, nEpsilon;
+        static thread_local vector<Number> nSpots, nTimes;
+        static thread_local matrix<Number> nVols;
+
+		//	Allocate
+		nSpots.resize(spots.size()); 
+		nTimes.resize(times.size());
+		nVols.resize(vols.rows(), vols.cols());
+
+		//	Initialize and put on tape
+		nS0 = S0;
+        nMaturity = maturity;
+        nStrike = strike;
+        nBarrier = barrier;
+        nEpsilon = epsilon;
+        copy(spots.begin(), spots.end(), nSpots.begin());
+        copy(times.begin(), times.end(), nTimes.begin());
+        copy(vols.begin(), vols.end(), nVols.begin());
+
+        //	Process the batch
+        Number nBatchPrice = dupireBarrierMCBatch(
+            nS0,
+            nSpots,
+            nTimes,
+            nVols,
+            nMaturity,
+            nStrike,
+            nBarrier,
+            firstPath,
+            lastPath,
+            Nt,
+            nEpsilon,
+            *cRandom);
+
+        //	Back-propagate derivatives
+        vector<double> adjoints = calculateAdjoints(nBatchPrice);
+
+        //	Pick results
+        int paths = lastPath - firstPath;
+        batchPrices[batch] = nBatchPrice.value * paths;
+        batchDeltas[batch] = adjoints[nS0.idx] * paths;
+        transform(nVols.begin(), nVols.end(), batchVegas[batch].begin(),
+            [&](const Number& vol) { return adjoints[vol.idx] * paths; });
+
+	}
+
+    //  Average results over batches
+    price = accumulate(batchPrices.begin(), batchPrices.end(), 0.0) / Np;
+    delta = accumulate(batchDeltas.begin(), batchDeltas.end(), 0.0) / Np;    
+    vegas.resize(spots.size(), times.size());
+    for (auto& vega : vegas) vega = 0.0;
+	//	Average vegas in parallel
+	#pragma omp parallel for
+	for (int i = 0; i < vegas.rows(); ++i)
+	{
+		for (int j = 0; j < vegas.cols(); ++j)
+		{
+			for (int k = 0; k < numBatches; ++k)
+			{
+				vegas[i][j] += batchVegas[k][i][j];
+			}
+			vegas[i][j] /= Np;
+		}
 	}
 }
