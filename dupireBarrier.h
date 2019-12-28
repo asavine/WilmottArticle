@@ -321,7 +321,7 @@ inline void dupireBarrierRisksMT(
 	    batchVega.resize(spots.size(), times.size());
     }
 
-	//	Initialize the RNGs
+	//	Initialize the RNG
 	random.init(Nt);
 	 
 	//	Iterate over batches, in parallel
