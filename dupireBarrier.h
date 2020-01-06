@@ -32,14 +32,14 @@ inline T dupireBarrierMCBatch(
     //  Initialize
     T result = 0;
     vector<double> gaussianIncrements(Nt); 
+	//	double because the RNG is not templated
+	//  	(and correctly so, see chapter 12)
 	
 	//	Set RNG state to the first path in the batch
 	random.skipTo(firstPath);
 
-	//	double because the RNG is not templated (and doesn't need to be, see chapter 12)
-    const T dt = maturity / Nt, sdt = sqrt(dt);
-
     //  Loop over paths
+    const T dt = maturity / Nt, sdt = sqrt(dt);
     for (int i = firstPath; i < lastPath; ++i)
     {
         //  Generate Nt Gaussian Numbers
